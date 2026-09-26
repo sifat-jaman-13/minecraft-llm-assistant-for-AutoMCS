@@ -43,6 +43,47 @@ Auto-MCS is the server manager and runtime that hosts this script.
 
 Follow the current Auto-MCS documentation and release instructions if the installer presents version-specific options. This project does not redistribute Auto-MCS.
 
+## Add the assistant to Auto-MCS
+
+Auto-MCS includes an AMScript manager and editor. Use that manager to install and enable this script for the server; do not place the file inside the Minecraft world or `mods` directory.
+
+1. Stop the Minecraft server from Auto-MCS before making changes.
+2. Download the latest ZIP from the [Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases) and extract it.
+3. In Auto-MCS, open the target server and open its **AMScript** or **Scripts** manager.
+4. Choose **Import**, **Add Script**, or create a new script in the built-in AMScript editor. The exact label can vary by Auto-MCS version.
+5. Select `MineCraft_LLM.txt` from the extracted package. If the manager only accepts `.ams` files, rename a copy to `MineCraft_LLM.ams` before importing, or create a new script and paste the complete file contents into the editor.
+6. Save the script and enable it for the target server. Auto-MCS manages the shared script library, while script activation can be controlled per server.
+7. Install the Python dependency from the extracted package in the Python environment used by Auto-MCS:
+
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+
+8. Configure either Ollama or Hugging Face in the server-owner configuration section at the top of the script.
+9. Start Ollama first if using the local backend. Confirm the model is available with `ollama list`.
+10. Start the Minecraft server. On startup, check the Auto-MCS console for the backend status message.
+
+If the server was already running while the script was edited, use **Reload Scripts** in the AMScript manager or run Auto-MCS's `!ams reload` command where supported. Otherwise, stop and restart the server.
+
+### Verify the installation in game
+
+Join the server and test these commands:
+
+```text
+!lastdeath
+!find village
+!biome plains
+!llm what do I have in my inventory?
+```
+
+The first three commands verify script event and command registration. The final command verifies inventory capture and the configured AI backend. A successful startup should also show a Hugging Face configuration message or an Ollama connectivity message in the Auto-MCS console.
+
+### Script management and backups
+
+Scripts are managed centrally by Auto-MCS and may be shared across servers, with activation controlled per server. Use the folder button in the AMScript manager to open the managed scripts directory when you need to back up or inspect files. Keep an external backup because AMScripts may not be included in Auto-MCS's normal server backup set.
+
+For the official AMScript workflow and current interface details, see the [Auto-MCS AMScript guide](https://www.auto-mcs.com/guides/amscript).
+
 ## Install this project
 
 ### Option 1: Download a release package
