@@ -1,0 +1,822 @@
+#!
+# title: Minecraft LLM Assistant
+# author: ScarZero
+# version: 28.0
+# github: https://github.com/sifat-jaman-13
+# description: High-performance Minecraft LLM assistant with instant Python inventory parsing,
+# forced console buffer flushing, on-demand AI analysis, and comprehensive structure lookups.
+#
+# Inspired By # author: Kaleb Efflandt
+#             version: 1.2
+#             description: Talk to ChatGPT with the in-game chat
+#             https://github.com/macarooni-man/auto-mcs/blob/main/amscript-library/ChatGPT/chatgpt.ams
+#
+# Usage:
+# >> !llm <prompt>
+# >> !find <structure>
+# >> !biome <biome>
+# >> !lastdeath
+#
+# Examples:
+# >> !llm what do I have?
+# >> !llm what can I do with my inventory?
+# >> !find ruined portal
+# >> !biome badlands
+#!
+
+import urllib.request
+import urllib.error
+import os
+import winreg
+import re
+import json
+import difflib
+from gradio_client import Client
+
+# ==================================================
+# SERVER OWNER CONFIGURATION (BACKEND & MODEL)
+# ==================================================
+ACTIVE_BACKEND = "hf"  # Set to "ollama" if using local models
+ACTIVE_MODEL_NAME = "yuntian-deng/ChatGPT"
+
+# --- OPTION A: OLLAMA QWEN 3.5 (0.8B) [UNCOMMENT TO USE] ---
+# ACTIVE_BACKEND = "ollama"
+# ACTIVE_MODEL_NAME = "qwen3.5:0.8b"
+
+# --- OPTION B: OLLAMA QWEN 3.5 (2B) [UNCOMMENT TO USE] ---
+# ACTIVE_BACKEND = "ollama"
+# ACTIVE_MODEL_NAME = "qwen3.5:2b"
+
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_THINK = False
+OLLAMA_KEEP_ALIVE = "10m"
+OLLAMA_TIMEOUT = 30
+OLLAMA_NUM_PREDICT = 64
+
+HF_client = None
+pending_find = {}
+pending_biomes = {}
+
+collecting_inventory = {}
+pending_question = {}
+inventory_mode = {}
+inventory_nbt_cache = {}
+
+
+# ==================================================
+# HUGGING FACE TOKEN & CLIENT SETUP
+# ==================================================
+
+def get_hf_token():
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        return token
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
+        token, _ = winreg.QueryValueEx(key, "HF_TOKEN")
+        winreg.CloseKey(key)
+        return token
+    except:
+        return None
+
+def huggingface_generate(prompt):
+    global HF_client
+    if HF_client is None:
+        hf_token = get_hf_token()
+        if not hf_token:
+            raise RuntimeError("HF_TOKEN environment variable not found.")
+        HF_client = Client(ACTIVE_MODEL_NAME, token=hf_token)
+    
+    response = HF_client.predict(inputs=prompt, api_name="/predict")
+    response_text = response[0][-1][-1]
+    return str(response_text).replace("<br>", "\n").replace("\u2019", "'").strip()
+
+
+# ==================================================
+# OLLAMA BACKEND (FALLBACK)
+# ==================================================
+
+def is_ollama_reachable():
+    request = urllib.request.Request(OLLAMA_BASE_URL + "/api/version", method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+def report_backend_requirements():
+    if ACTIVE_BACKEND == "hf":
+        if get_hf_token():
+            server.log_success("[LLM] Hugging Face client configured successfully.")
+        else:
+            server.log_error("[LLM] Hugging Face selected, but HF_TOKEN environment variable is missing.")
+    else:
+        if not is_ollama_reachable():
+            server.log_error("[LLM] Ollama is not running at " + OLLAMA_BASE_URL)
+
+def ollama_generate(prompt):
+    payload = {
+        "model": ACTIVE_MODEL_NAME,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        "think": OLLAMA_THINK,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
+        "options": {"num_predict": OLLAMA_NUM_PREDICT, "temperature": 0.2}
+    }
+
+    request = urllib.request.Request(
+        OLLAMA_BASE_URL + "/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        message = data.get("message", {})
+        answer = message.get("content", "") or data.get("response", "")
+        if not answer:
+            raise RuntimeError("Ollama returned an empty response.")
+        return str(answer).strip()
+    except urllib.error.URLError as e:
+        raise RuntimeError("Ollama request failed at " + OLLAMA_BASE_URL + ": " + str(e))
+
+
+# ==================================================
+# NATIVE PYTHON INVENTORY AGGREGATOR & FORMATTER
+# ==================================================
+
+def split_snbt_list(s):
+    s = s.strip()
+    if s.startswith("["): s = s[1:]
+    if s.endswith("]"): s = s[:-1]
+    items, depth, current, in_quote, quote_char = [], 0, [], False, ''
+    for char in s:
+        if char in ('"', "'") and not in_quote:
+            in_quote = True; quote_char = char
+        elif char == quote_char and in_quote:
+            in_quote = False
+        elif not in_quote:
+            if char in ('{', '['): depth += 1
+            elif char in ('}', ']'):
+                depth -= 1
+                if depth == 0 and char == '}':
+                    current.append(char)
+                    items.append("".join(current).strip())
+                    current = []
+                    continue
+        if depth > 0: current.append(char)
+    return items
+
+def get_aggregated_inventory_data(player_name):
+    inv_str = inventory_nbt_cache.get(player_name, "")
+    if not inv_str:
+        return {}
+
+    entries = split_snbt_list(inv_str)
+    item_totals = {}
+
+    for entry in entries:
+        if "air" in entry.lower() or "id:\"minecraft:air\"" in entry.lower():
+            continue
+        
+        id_match = re.search(r'id:\s*["\']?(?:minecraft:)?([a-z0-9_]+)["\']?', entry, re.I)
+        if not id_match:
+            continue
+        raw_id = id_match.group(1).lower()
+        if "air" in raw_id:
+            continue
+            
+        item_name = raw_id.replace("_", " ").title()
+
+        count_match = re.search(r'\bcount:\s*(\d+)b?', entry, re.I)
+        count = int(count_match.group(1)) if count_match else 1
+        
+        enchantments = []
+        modern_match = re.search(r'["\']?(?:minecraft:)?enchantments["\']?\s*:\s*\{.*?["\']?levels["\']?\s*:\s*\{(.*?)\}', entry, re.I)
+        if modern_match:
+            ench_pairs = re.findall(r'["\']?(?:minecraft:)?([a-z0-9_]+)["\']?\s*:\s*(\d+)', modern_match.group(1), re.I)
+            for e_name, e_lvl in ench_pairs:
+                enchantments.append(f"{e_name.replace('_', ' ').title()} {e_lvl}")
+
+        key = item_name
+        if enchantments:
+            key += f" (Enchanted: {', '.join(enchantments)})"
+
+        item_totals[key] = item_totals.get(key, 0) + count
+
+    return item_totals
+
+def get_clean_inventory_string(player_name):
+    totals = get_aggregated_inventory_data(player_name)
+    if not totals:
+        return "Empty"
+    
+    sorted_items = sorted(totals.items())
+    return "\n".join([f"- {name} x {count}" for name, count in sorted_items])
+
+
+# ==================================================
+# EFFECTS & CONTEXT
+# ==================================================
+
+def get_effects(player):
+    if not player.active_effects:
+        return "None"
+    
+    text = ""
+    for effect_name, effect in player.active_effects.items():
+        text += str(effect_name)
+        try:
+            text += " (" + str(effect.duration) + " ticks remaining)"
+        except:
+            pass
+        text += "\n"
+    return text
+
+def build_context(player, include_inventory=False):
+    position = player.position
+    effects = get_effects(player)
+
+    text = "You are a concise Minecraft survival companion. Keep answers to 1 short sentence.\n"
+    text += "If the player is asking how to find, reach, or navigate to a structure or biome, output '[LOCATE: <structure_or_biome>]'. Never make up coordinate numbers yourself.\n\n"
+    text += f"Status: Health {player.health}/20, Hunger {player.hunger_level}/20\n"
+    
+    if include_inventory:
+        inventory_summary = get_clean_inventory_string(player.name)
+        text += f"Inventory Items:\n{inventory_summary}\n"
+    
+    return text
+
+
+# ==================================================
+# INSTANT PYTHON DISPLAY (NO LLM)
+# ==================================================
+
+def display_inventory_only(player_name):
+    player = server.get_player(player_name)
+    if player is None:
+        pending_question.pop(player_name, None)
+        inventory_mode.pop(player_name, None)
+        return
+
+    clean_inv_text = get_clean_inventory_string(player_name)
+    player.log("========================================", color="gold", style="bold")
+    player.log("YOUR INVENTORY (Python):", color="yellow", style="bold")
+    for line in clean_inv_text.split("\n"):
+        if line.strip():
+            player.log(line, color="aqua")
+    player.log("========================================", color="gold", style="bold")
+    
+    pending_question.pop(player_name, None)
+    inventory_mode.pop(player_name, None)
+
+
+# ==================================================
+# FINISH LLM (DIRECT EXECUTION)
+# ==================================================
+
+def finish_llm(player_name, question):
+    player = server.get_player(player_name)
+    if player is None:
+        pending_question.pop(player_name, None)
+        inventory_mode.pop(player_name, None)
+        return
+
+    context = build_context(player, include_inventory=True)
+    prompt = context + f"Q: {question}\nAnswer:"
+
+    player.log("[LLM] Thinking...", color="yellow")
+
+    try:
+        if ACTIVE_BACKEND == "hf":
+            response = huggingface_generate(prompt)
+        else:
+            response = ollama_generate(prompt)
+
+        # Intelligence Intercept: If the LLM realized the player wants to find a location
+        locate_match = re.search(r'\[LOCATE:\s*([^\]]+)\]', response, re.IGNORECASE)
+        if locate_match:
+            target_key = locate_match.group(1).strip().lower().replace(" ", "_").replace("minecraft:", "")
+            clean_reply = re.sub(r'\[LOCATE:\s*[^\]]+\]', '', response).strip()
+            
+            if clean_reply:
+                header_msg = {"text": f"[LLM] {player_name} asked: {question}", "color": "gold"}
+                server.execute("/tellraw @a " + json.dumps(header_msg), log=False)
+                reply_msg = {"text": f"[LLM] {clean_reply}", "color": "blue"}
+                server.execute("/tellraw @a " + json.dumps(reply_msg), log=False)
+
+            if target_key in STRUCTURES or difflib.get_close_matches(target_key, STRUCTURES.keys(), n=1, cutoff=0.40):
+                locate_structure(player_name, target_key)
+            else:
+                locate_biome(player_name, target_key)
+            return
+
+        header_msg = {"text": f"[LLM] {player_name} asked: {question}", "color": "gold"}
+        server.execute("/tellraw @a " + json.dumps(header_msg), log=False)
+
+        for line in response.split("\n"):
+            if line.strip():
+                reply_msg = {"text": f"[LLM] {line}", "color": "blue"}
+                server.execute("/tellraw @a " + json.dumps(reply_msg), log=False)
+    except Exception as e:
+        p_obj = server.get_player(player_name)
+        if p_obj:
+            p_obj.log_error("[LLM API Error]: " + str(e))
+    finally:
+        pending_question.pop(player_name, None)
+        inventory_mode.pop(player_name, None)
+
+
+# ==================================================
+# STRUCTURE IDs, NAMES & COMPREHENSIVE TYPOS
+# ==================================================
+
+STRUCTURES = {
+    # Village Variants & Typos
+    "village": "#minecraft:village",
+    "villag": "#minecraft:village",
+    "vilage": "#minecraft:village",
+    "villge": "#minecraft:village",
+    "villages": "#minecraft:village",
+    "town": "#minecraft:village",
+    
+    # Ancient City & Deep Dark
+    "ancient_city": "minecraft:ancient_city",
+    "ancientcity": "minecraft:ancient_city",
+    "ancient": "minecraft:ancient_city",
+    "deep_dark": "minecraft:ancient_city",
+    "deepdark": "minecraft:ancient_city",
+    "warden_city": "minecraft:ancient_city",
+    "anciet_city": "minecraft:ancient_city",
+    
+    # Woodland Mansion
+    "mansion": "woodland_mansion",
+    "woodland_mansion": "woodland_mansion",
+    "woodlandmansion": "woodland_mansion",
+    "woods_mansion": "woodland_mansion",
+    "dark_forest_mansion": "woodland_mansion",
+    "manson": "woodland_mansion",
+    "mancion": "woodland_mansion",
+    
+    # Pillager Outpost
+    "outpost": "minecraft:pillager_outpost",
+    "pillager_outpost": "minecraft:pillager_outpost",
+    "pillageroutpost": "minecraft:pillager_outpost",
+    "pillager": "minecraft:pillager_outpost",
+    "pilager_outpost": "minecraft:pillager_outpost",
+    "pillager_tower": "minecraft:pillager_outpost",
+    
+    # Stronghold
+    "stronghold": "minecraft:stronghold",
+    "stronhold": "minecraft:stronghold",
+    "strong_hold": "minecraft:stronghold",
+    "strongehold": "minecraft:stronghold",
+    "end_portal": "minecraft:stronghold",
+    
+    # Ocean Monument
+    "monument": "minecraft:monument",
+    "ocean_monument": "minecraft:monument",
+    "oceanmonument": "minecraft:monument",
+    "guardian_temple": "minecraft:monument",
+    "monumant": "minecraft:monument",
+    
+    # Desert Pyramid / Temple
+    "desert_pyramid": "minecraft:desert_pyramid",
+    "desert_temple": "minecraft:desert_pyramid",
+    "desertpyramid": "minecraft:desert_pyramid",
+    "deserttemple": "minecraft:desert_pyramid",
+    "pyramid": "minecraft:desert_pyramid",
+    "desret_pyramid": "minecraft:desert_pyramid",
+    "dessert_temple": "minecraft:desert_pyramid",
+    
+    # Jungle Pyramid / Temple
+    "jungle_pyramid": "minecraft:jungle_pyramid",
+    "jungle_temple": "minecraft:jungle_pyramid",
+    "junglepyramid": "minecraft:jungle_pyramid",
+    "jungletemple": "minecraft:jungle_pyramid",
+    "jngle_pyramid": "minecraft:jungle_pyramid",
+    
+    # Swamp Hut / Witch Hut
+    "swamp_hut": "minecraft:swamp_hut",
+    "witch_hut": "minecraft:swamp_hut",
+    "swamphut": "minecraft:swamp_hut",
+    "witchhut": "minecraft:swamp_hut",
+    "hut": "minecraft:swamp_hut",
+    "swamp_house": "minecraft:swamp_hut",
+    
+    # Igloo
+    "igloo": "minecraft:igloo",
+    "iglu": "minecraft:igloo",
+    "snow_house": "minecraft:igloo",
+    
+    # Shipwreck
+    "shipwreck": "#minecraft:shipwreck",
+    "ship_wreck": "#minecraft:shipwreck",
+    "boat": "#minecraft:shipwreck",
+    "shipwrek": "#minecraft:shipwreck",
+    
+    # Buried Treasure
+    "buried_treasure": "minecraft:buried_treasure",
+    "treasure": "minecraft:buried_treasure",
+    "buriedtreasure": "minecraft:buried_treasure",
+    "treasure_chest": "minecraft:buried_treasure",
+    "burried_treasure": "minecraft:buried_treasure",
+    
+    # Mineshaft
+    "mineshaft": "#minecraft:mineshaft",
+    "mine_shaft": "#minecraft:mineshaft",
+    "mineshaft_mesa": "minecraft:mineshaft_mesa",
+    
+    # Trial Chambers
+    "trial_chamber": "minecraft:trial_chambers",
+    "trial_chambers": "minecraft:trial_chambers",
+    "trialchamber": "minecraft:trial_chambers",
+    "trialchambers": "minecraft:trial_chambers",
+    "trial": "minecraft:trial_chambers",
+    "chambers": "minecraft:trial_chambers",
+    "breeze_chamber": "minecraft:trial_chambers",
+    "trial_chmber": "minecraft:trial_chambers",
+    
+    # Trail Ruins
+    "trail_ruins": "minecraft:trail_ruins",
+    "trailruins": "minecraft:trail_ruins",
+    "trail_ruin": "minecraft:trail_ruins",
+    "archeology_ruins": "minecraft:trail_ruins",
+    
+    # Ruined Portal
+    "ruined_portal": "#minecraft:ruined_portal",
+    "portal": "#minecraft:ruined_portal",
+    "ruinedportal": "#minecraft:ruined_portal",
+    "nether_portal": "#minecraft:ruined_portal",
+    "broken_portal": "#minecraft:ruined_portal",
+    "ruin_portal": "#minecraft:ruined_portal",
+    
+    # Ocean Ruins
+    "ocean_ruins": "#minecraft:ocean_ruin",
+    "ocean_ruin": "#minecraft:ocean_ruin",
+    "oceanruin": "#minecraft:ocean_ruin",
+    "oceanruins": "#minecraft:ocean_ruin",
+    "underwater_ruins": "#minecraft:ocean_ruin",
+    
+    # Nether Fortress
+    "fortress": "minecraft:fortress",
+    "nether_fortress": "minecraft:fortress",
+    "netherfortress": "minecraft:fortress",
+    "nether_brick_fortress": "minecraft:fortress",
+    "blaze_fortress": "minecraft:fortress",
+    "nether_fortres": "minecraft:fortress",
+    
+    # Bastion Remnant
+    "bastion": "minecraft:bastion_remnant",
+    "bastion_remnant": "minecraft:bastion_remnant",
+    "bastionremnant": "minecraft:bastion_remnant",
+    "piglin_bastion": "minecraft:bastion_remnant",
+    "piglin_base": "minecraft:bastion_remnant",
+    "bastion_remanant": "minecraft:bastion_remnant",
+    
+    # End City
+    "end_city": "minecraft:end_city",
+    "endcity": "minecraft:end_city",
+    "end_ship": "minecraft:end_city",
+    "end_castle": "minecraft:end_city"
+}
+
+STRUCTURE_NAMES = {
+    "village": "Village",
+    "ancient_city": "Ancient City",
+    "mansion": "Woodland Mansion",
+    "outpost": "Pillager Outpost",
+    "stronghold": "Stronghold",
+    "monument": "Ocean Monument",
+    "desert_pyramid": "Desert Temple",
+    "jungle_pyramid": "Jungle Temple",
+    "swamp_hut": "Witch Hut",
+    "igloo": "Igloo",
+    "shipwreck": "Shipwreck",
+    "buried_treasure": "Buried Treasure",
+    "mineshaft": "Mineshaft",
+    "trial_chambers": "Trial Chamber",
+    "trail_ruins": "Trail Ruins",
+    "ruined_portal": "Ruined Portal",
+    "ocean_ruin": "Ocean Ruins",
+    "fortress": "Nether Fortress",
+    "bastion_remnant": "Bastion Remnant",
+    "end_city": "End City"
+}
+
+KNOWN_BIOMES = [
+    "badlands", "bamboo_jungle", "basalt_deltas", "beach", "birch_forest",
+    "cherry_grove", "crimson_forest", "dark_forest", "deep_dark", "desert",
+    "dripstone_caves", "eroded_badlands", "flower_forest", "forest",
+    "frozen_peaks", "ice_spikes", "jagged_peaks", "jungle", "lush_caves",
+    "mangrove_swamp", "meadow", "mushroom_fields", "nether_wastes", "ocean",
+    "old_growth_pine_taiga", "plains", "savanna", "snowy_plains", "snowy_slopes",
+    "soul_sand_valley", "swamp", "taiga", "the_end", "warm_ocean",
+    "warped_forest", "windswept_hills"
+]
+
+
+# ==================================================
+# GET DIRECTION
+# ==================================================
+
+def get_direction(dx, dz):
+    if abs(dx) < 1 and abs(dz) < 1:
+        return "Here"
+    if abs(dx) > abs(dz):
+        if dx > 0:
+            return "Southeast" if dz > 0 else ("Northeast" if dz < -abs(dx) * 0.414 else "East")
+        else:
+            return "Southwest" if dz > 0 else ("Northwest" if dz < -abs(dx) * 0.414 else "West")
+    else:
+        if dz > 0:
+            return "Southeast" if dx > 0 else ("Southwest" if dx < -abs(dz) * 0.414 else "South")
+        else:
+            return "Northeast" if dx > 0 else ("Northwest" if dz < -abs(dz) * 0.414 else "North")
+
+
+# ==================================================
+# LOCATE STRUCTURE & BIOME
+# ==================================================
+
+def locate_structure(player_name, structure_name):
+    player = server.get_player(player_name)
+    if player is None:
+        return
+    
+    # Normalize spaces to underscores for flexible typing
+    key = structure_name.lower().strip().replace(" ", "_")
+    if key not in STRUCTURES:
+        matches = difflib.get_close_matches(key, STRUCTURES.keys(), n=1, cutoff=0.40)
+        if matches:
+            key = matches[0]
+        else:
+            player.log_error("[Structures] Unknown structure: " + key)
+            return
+    
+    structure_id = STRUCTURES[key]
+    pending_find[player_name] = key
+    try:
+        server.execute("/execute at " + player_name + " run locate structure " + structure_id, log=False)
+    except Exception as e:
+        pending_find.pop(player_name, None)
+        player.log_error("[Structures] Error: " + str(e))
+
+def locate_biome(player_name, biome_name):
+    player = server.get_player(player_name)
+    if player is None:
+        return
+    key = biome_name.lower().strip().replace(" ", "_").replace("minecraft:", "")
+    if key not in KNOWN_BIOMES:
+        matches = difflib.get_close_matches(key, KNOWN_BIOMES, n=1, cutoff=0.40)
+        if matches:
+            key = matches[0]
+    biome_id = "minecraft:" + key
+    pending_biomes[player_name] = biome_id
+    try:
+        server.execute("/execute at " + player_name + " run locate biome " + biome_id, log=False)
+    except Exception as e:
+        pending_biomes.pop(player_name, None)
+        player.log_error("[Biomes] Error: " + str(e))
+
+
+# ==================================================
+# ROBUST STREAM CAPTURE WITH BUFFER FLUSH
+# ==================================================
+
+@server.on_output(date, level, line):
+    global collecting_inventory
+    line_text = str(line)
+
+    if collecting_inventory:
+        for p_name in list(collecting_inventory.keys()):
+            if p_name in line_text and "has the following entity data:" in line_text:
+                parts = line_text.split("has the following entity data:")
+                if len(parts) > 1:
+                    raw_data = parts[1].strip()
+                    inventory_nbt_cache[p_name] = raw_data
+                    collecting_inventory.pop(p_name, None)
+
+                    mode = inventory_mode.get(p_name, "display")
+                    question = pending_question.get(p_name, "")
+                    
+                    if mode == "analysis":
+                        server.after(0.1, finish_llm, p_name, question)
+                    else:
+                        server.after(0.1, display_inventory_only, p_name)
+                break
+
+    _try_capture_locate(line_text)
+
+
+def _try_capture_locate(line):
+    if "The nearest minecraft:" not in line and "The nearest #minecraft:" not in line:
+        return
+
+    match = re.search(
+        r"The nearest\s+([^\s]+)(?:\s+\([^)]+\))?\s+is at\s+"
+        r"\[\s*(-?\d+)\s*,\s*([^,\]]+)\s*,\s*(-?\d+)\s*\]"
+        r"\s*\(([\d,]+)\s+blocks?\s+away\)",
+        line,
+        re.IGNORECASE
+    )
+    if match is None:
+        return
+
+    try:
+        x = int(match.group(2))
+        y = match.group(3).strip()
+        z = int(match.group(4))
+        distance = int(match.group(5).replace(",", ""))
+    except:
+        return
+
+    player_name = None
+    target_type = None
+
+    for name in pending_find:
+        player_name = name
+        target_type = "structure"
+        break
+
+    if player_name is None:
+        for name in pending_biomes:
+            player_name = name
+            target_type = "biome"
+            break
+
+    if player_name is None:
+        return
+
+    player = server.get_player(player_name)
+    if player is None:
+        return
+
+    position = player.position
+    try:
+        player_x = float(position.x)
+        player_z = float(position.z)
+    except:
+        player_x = float(x)
+        player_z = float(z)
+
+    dx = x - player_x
+    dz = z - player_z
+    direction = get_direction(dx, dz)
+    y_text = "Not provided by /locate" if y == "~" else y
+
+    if target_type == "structure":
+        target_name = pending_find.pop(player_name, None)
+        display_name = STRUCTURE_NAMES.get(target_name, target_name.replace("_", " ").title())
+        prefix = "[Structures]"
+    else:
+        target_name = pending_biomes.pop(player_name, None)
+        display_name = target_name.replace("minecraft:", "").replace("_", " ").title()
+        prefix = "[Biomes]"
+
+    player.log("If you want to enjoy the game, you can make an in-game map!", color="yellow")
+    player.log_success(prefix + " Nearest " + display_name + ":")
+    player.log_success("X: " + str(x))
+    player.log_success("Y: " + str(y_text))
+    player.log_success("Z: " + str(z))
+    player.log_success("Distance: " + str(distance) + " blocks")
+    player.log_success("Direction: " + direction)
+
+
+# ==================================================
+# SERVER START
+# ==================================================
+
+@server.on_start(data, delay=0):
+    report_backend_requirements()
+
+
+# ==================================================
+# !LLM COMMAND (WITH FLEXIBLE STRUCTURE & INVENTORY ROUTING)
+# ==================================================
+
+@player.on_alias(player, command='llm', arguments={'prompt': True}, permission='anyone', description='Ask LLM about Minecraft'):
+    question = str(arguments['prompt'])
+    q_lower = question.lower().strip()
+
+    # 1. OBVIOUS SEARCH (Instant locate, NO thinking delay)
+    # Catches: "find village", "near village", "village near me", "closest village", "where fortress", or just "village"
+    lookup_triggers = ['find', 'locate', 'where', 'near', 'nearby', 'closest', 'any', 'search']
+    is_lookup = any(w in q_lower for w in lookup_triggers)
+
+    for s_key in STRUCTURES.keys():
+        name_clean = s_key.replace("_", " ")
+        if (is_lookup and (s_key in q_lower or name_clean in q_lower)) or q_lower == s_key or q_lower == name_clean:
+            locate_structure(player.name, s_key)
+            return
+
+    for b_key in KNOWN_BIOMES:
+        name_clean = b_key.replace("_", " ")
+        if (is_lookup and (b_key in q_lower or name_clean in q_lower)) or q_lower == b_key or q_lower == name_clean:
+            locate_biome(player.name, b_key)
+            return
+
+    # 2. OTHERWISE NEEDED (Conversational / Analysis / Inventory reasoning requires LLM thinking)
+    analysis_triggers = ['what can i do', 'craft', 'use my', 'do with', 'how to use', 'help me build']
+    is_analysis = any(t in q_lower for t in analysis_triggers)
+
+    display_triggers = ['inventory', 'item', 'holding', 'wearing', 'armor', 'gear', 'carrying', 'have', 'what am i', 'what do i', 'beef', 'chicken', 'sword', 'pickaxe']
+    needs_inventory = any(t in q_lower for t in display_triggers) or is_analysis
+
+    if needs_inventory:
+        if player.name in collecting_inventory:
+            player.log_error("[LLM] Please wait for your current inventory request to finish.")
+            return
+
+        pending_question[player.name] = question
+        collecting_inventory[player.name] = True
+
+        if is_analysis:
+            inventory_mode[player.name] = "analysis"
+            player.log("[LLM] Analyzing inventory with AI...", color="yellow")
+        else:
+            inventory_mode[player.name] = "display"
+            player.log("[Python] Fetching inventory list...", color="yellow")
+
+        # Execute data command and force server console flush instantly
+        server.execute("/data get entity " + player.name + " Inventory")
+        server.execute("/time query daytime", log=False)
+    else:
+        pending_question[player.name] = question
+        player.log("[LLM] Thinking...", color="yellow")
+        server.after(0.1, finish_llm, player.name, question)
+
+
+# ==================================================
+# !FIND & !BIOME COMMANDS
+# ==================================================
+
+@player.on_alias(player, command='find', arguments={'structure': True}, permission='anyone', description='Find the nearest Minecraft structure'):
+    structure = str(arguments['structure'])
+    locate_structure(player.name, structure)
+
+@player.on_alias(player, command='biome', arguments={'biome': True}, permission='anyone', description='Find the nearest Minecraft biome'):
+    target_biome = str(arguments['biome'])
+    locate_biome(player.name, target_biome)
+
+
+# ==================================================
+# DEATH COORDINATES TRACKER
+# ==================================================
+
+@player.on_death(player, enemy, message):
+    pos = player.position
+    player.persistent['last_death'] = {
+        'x': int(pos.x),
+        'y': int(pos.y),
+        'z': int(pos.z),
+        'dimension': player.dimension
+    }
+    player.log("Your death location has been recorded in your survival logbook. Type '!lastdeath' to view it.", color="red")
+
+@player.on_alias(player, command='lastdeath', arguments={}, permission='anyone', description='Check the coordinates of your last death'):
+    death_data = player.persistent.get('last_death')
+    if not death_data:
+        player.log("You haven't died yet this session. Stay safe out there!", color="green")
+        return
+        
+    x = death_data['x']
+    y = death_data['y']
+    z = death_data['z']
+    dim = death_data['dimension']
+    
+    player.log("========================================", color="red", style="bold")
+    player.log("LAST RECORDED DEATH LOCATION:", color="yellow", style="bold")
+    player.log(f"Dimension: {dim}", color="white")
+    player.log(f"Coordinates -> X: {x}, Y: {y}, Z: {z}", color="aqua", style="bold")
+    player.log("Head back carefully and retrieve your gear!", color="gray")
+    player.log("========================================", color="red", style="bold")
+
+
+# ==================================================
+# PLAYER JOIN EVENT
+# ==================================================
+
+@player.on_join(player, data):
+    player.log("========================================", color="gold", style="bold")
+    player.log(f"Welcome to the server, {player.name}!", color="yellow", style="bold")
+    player.log("We are incredibly excited to have you join our adventure.", color="white")
+    player.log(" ", color="white")
+    
+    player.log("SERVER GUIDELINES:", color="red", style="bold")
+    player.log("1. Have fun and explore!", color="green")
+    player.log("2. Have fun and explore!", color="gray")
+    player.log("3. Have fun and explore!", color="yellow")
+    player.log(" ", color="white")
+    
+    player.log("YOUR PERSONAL AI ASSISTANT:", color="aqua", style="bold")
+    player.log("You have access to a smart AI that knows your inventory and stats!", color="white")
+    player.log(" - Type '!llm <question>' to ask it anything about your current status.", color="green")
+    player.log(" - Type '!find <structure>' (e.g., !find ruined portal) to locate nearby places.", color="green")
+    player.log(" - Type '!biome <biome>' (e.g., !biome cherry_grove) to find a specific biome.", color="green")
+    player.log(" - Type '!lastdeath' to recall where you last died.", color="green")
+    player.log("========================================", color="red", style="bold")
+    
+    server.broadcast(f"A wild {player.name} has appeared! Welcome them to the server!", color="light_purple", style="bold")
