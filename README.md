@@ -203,4 +203,6 @@ This project is inspired by the Auto-MCS ChatGPT script by [macarooni-man](https
 
 ## License
 
-No license has been selected yet. Until a license is added, all rights are reserved by the copyright holder.
+This project is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Sifat Jaman.
