@@ -1,73 +1,117 @@
+<div align="center">
+
 # Minecraft LLM Assistant for AutoMCS
 
-Minecraft LLM Assistant for AutoMCS is an Auto-MCS server script that provides an AI-assisted survival companion directly in Minecraft. It can answer concise gameplay questions, inspect a player's inventory, locate structures and biomes, and record the coordinates of the player's latest death.
+**Your AI-powered Minecraft survival companion — right inside your Auto-MCS server.**
 
-The project supports two AI backends:
+Ask gameplay questions, inspect your inventory, find structures and biomes, and recover your last death coordinates.
 
-- **Hugging Face Spaces** for hosted inference.
-- **Ollama** for local inference on the server-owner's computer.
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows)](https://www.microsoft.com/windows)
+[![Runtime](https://img.shields.io/badge/Runtime-Auto--MCS-5865F2?style=for-the-badge)](https://www.auto-mcs.com/)
+[![Python](https://img.shields.io/badge/Python-Script-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Proprietary%20Non--Commercial-orange?style=for-the-badge)](LICENSE)
 
-## Features
+[**Download Latest Release**](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases) · [**Report an Issue**](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/issues)
 
-- `!llm <question>` for survival guidance and inventory-aware questions
-- Native Python inventory parsing and item aggregation
-- `!find <structure>` for nearby structure coordinates
-- `!biome <biome>` for nearby biome coordinates
-- `!lastdeath` for the most recently recorded death location
-- Fuzzy matching for common structure names and spelling variations
-- Distance and compass-direction output for locate results
-- Optional hosted or local AI inference
+</div>
 
-## Requirements
+---
+
+## ✨ What it does
+
+Minecraft LLM Assistant for AutoMCS is an Auto-MCS server script that adds an AI-assisted survival companion to Minecraft. It combines native Python inventory parsing with optional AI inference, built-in structure and biome lookups, and death-location tracking.
+
+<details open>
+<summary><strong>Core features</strong></summary>
+
+| Feature | What it does |
+| --- | --- |
+| 💬 **AI survival assistant** | Ask gameplay questions with `!llm <question>`. |
+| 🎒 **Inventory intelligence** | Parse and aggregate inventory items in Python; request AI analysis for crafting, usage, and recommendations. |
+| 🏛️ **Structure finder** | Find the nearest supported structure with `!find <structure>`. |
+| 🌍 **Biome finder** | Find the nearest supported biome with `!biome <biome>`. |
+| ☠️ **Last-death tracker** | Recall your latest recorded death location with `!lastdeath`. |
+| 🧭 **Location details** | View coordinates, distance, and compass direction for locate results. |
+| ✍️ **Flexible matching** | Fuzzy matching helps with common structure names and spelling variations. |
+| 🔌 **Backend choice** | Use hosted Hugging Face inference or local Ollama inference. |
+
+</details>
+
+## 🧰 Requirements
 
 - Windows
 - A Minecraft Java server managed by [Auto-MCS](https://www.auto-mcs.com/)
 - Python support provided by Auto-MCS
 - Python package `gradio_client`
 - One configured AI backend:
-  - a Hugging Face access token and a compatible Space, or
-  - Ollama installed locally with a downloaded model
+  - **Hugging Face:** an access token and a compatible Space.
+  - **Ollama:** a local installation with a downloaded model.
 
-The script uses Python standard-library modules in addition to `gradio_client`. Windows `winreg` is used to read a user-level `HF_TOKEN`.
+The script also uses Python standard-library modules. Windows `winreg` is used to read a user-level `HF_TOKEN`.
 
-## Install Auto-MCS
+## 🚀 Installation
+
+### 1. Set up Auto-MCS
 
 Auto-MCS is the server manager and runtime that hosts this script.
 
-1. Open the official website: [https://www.auto-mcs.com/](https://www.auto-mcs.com/).
-2. Download the current Windows installer or release provided by Auto-MCS.
-3. Run the installer and follow its setup prompts.
-4. Launch Auto-MCS and create or import a Minecraft Java server.
-5. Start the server once so Auto-MCS creates its standard script/AMScript directories.
-6. Stop the server before installing this script.
+1. Visit the [official Auto-MCS website](https://www.auto-mcs.com/).
+2. Download and install the current Windows release.
+3. Launch Auto-MCS and create or import a Minecraft Java server.
+4. Start the server once so Auto-MCS creates its standard script/AMScript directories.
+5. Stop the server before installing this script.
 
 Follow the current Auto-MCS documentation and release instructions if the installer presents version-specific options. This project does not redistribute Auto-MCS.
 
-## Add the assistant to Auto-MCS
+### 2. Download this project
 
-Auto-MCS includes an AMScript manager and editor. Use that manager to install and enable this script for the server; do not place the file inside the Minecraft world or `mods` directory.
+Choose either method:
 
-1. Stop the Minecraft server from Auto-MCS before making changes.
-2. Download the latest ZIP from the [Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases) and extract it.
-3. In Auto-MCS, open the target server and open its **AMScript** or **Scripts** manager.
-4. Choose **Import**, **Add Script**, or create a new script in the built-in AMScript editor. The exact label can vary by Auto-MCS version.
-5. Select `MineCraft_LLM.txt` from the extracted package. If the manager only accepts `.ams` files, rename a copy to `MineCraft_LLM.ams` before importing, or create a new script and paste the complete file contents into the editor.
-6. Save the script and enable it for the target server. Auto-MCS manages the shared script library, while script activation can be controlled per server.
-7. Install the Python dependency from the extracted package in the Python environment used by Auto-MCS:
+<details open>
+<summary><strong>Option A — Download a release (recommended)</strong></summary>
 
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
+1. Open the [Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases).
+2. Download the latest `minecraft-llm-assistant-for-AutoMCS-v*.zip` asset.
+3. Extract the ZIP file.
 
-8. Configure either Ollama or Hugging Face in the server-owner configuration section at the top of the script.
-9. Start Ollama first if using the local backend. Confirm the model is available with `ollama list`.
-10. Start the Minecraft server. On startup, check the Auto-MCS console for the backend status message.
+</details>
+
+<details>
+<summary><strong>Option B — Clone the repository</strong></summary>
+
+```powershell
+git clone https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS.git
+cd minecraft-llm-assistant-for-AutoMCS
+python -m pip install -r requirements.txt
+```
+
+</details>
+
+### 3. Import the AMScript
+
+Auto-MCS includes an AMScript manager and editor. Use it to install and enable the script for your server. Do not place the file inside the Minecraft world or `mods` directory.
+
+1. Stop the Minecraft server from Auto-MCS.
+2. In Auto-MCS, open the target server and its **AMScript** or **Scripts** manager.
+3. Choose **Import**, **Add Script**, or create a new script in the built-in editor. The exact label can vary by Auto-MCS version.
+4. Select `MineCraft_LLM.txt` from the extracted package. If your Auto-MCS version only accepts `.ams` files, rename a copy to `MineCraft_LLM.ams` or create a new script and paste the complete file contents into the editor.
+5. Save the script and enable it for the target server. Auto-MCS manages the shared script library, while activation can be controlled per server.
+6. Install the dependency in the Python environment used by Auto-MCS:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+7. Configure an AI backend using the instructions below.
+8. Start the Minecraft server and check the Auto-MCS console for the backend status message.
 
 If the server was already running while the script was edited, use **Reload Scripts** in the AMScript manager or run Auto-MCS's `!ams reload` command where supported. Otherwise, stop and restart the server.
 
-### Verify the installation in game
+For the official workflow and current interface details, see the [Auto-MCS AMScript guide](https://www.auto-mcs.com/guides/amscript).
 
-Join the server and test these commands:
+### 4. Verify in game
+
+Join the server and try:
 
 ```text
 !lastdeath
@@ -76,55 +120,30 @@ Join the server and test these commands:
 !llm what do I have in my inventory?
 ```
 
-The first three commands verify script event and command registration. The final command requests AI-powered inventory analysis. To display the inventory without AI, use `!llm what do I have?`. A successful startup should also show a Hugging Face configuration message or an Ollama connectivity message in the Auto-MCS console.
+The first three commands verify script event and command registration. The last command requests AI-powered inventory analysis. To display the inventory without AI, use `!llm what do I have?`.
 
-### Script management and backups
+A successful startup should also show a Hugging Face configuration message or an Ollama connectivity message in the Auto-MCS console.
 
-Scripts are managed centrally by Auto-MCS and may be shared across servers, with activation controlled per server. Use the folder button in the AMScript manager to open the managed scripts directory when you need to back up or inspect files. Keep an external backup because AMScripts may not be included in Auto-MCS's normal server backup set.
+> [!TIP]
+> Scripts are managed centrally by Auto-MCS and may be shared across servers, with activation controlled per server. Use the folder button in the AMScript manager to open the managed scripts directory when you need to back up or inspect files. Keep an external backup because AMScripts may not be included in Auto-MCS's normal server backup set.
 
-For the official AMScript workflow and current interface details, see the [Auto-MCS AMScript guide](https://www.auto-mcs.com/guides/amscript).
+## 🧠 Configure the AI backend
 
-## Install this project
+Choose **one** backend. The script's server-owner configuration is near the top of `MineCraft_LLM.txt`.
 
-### Option 1: Download a release package
+<details open>
+<summary><strong>Option A — Ollama (local inference)</strong></summary>
 
-1. Open the repository's [Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases).
-2. Download the latest `minecraft-llm-assistant-for-AutoMCS-v*.zip` asset.
-3. Extract the ZIP file.
-4. Import `MineCraft_LLM.txt` through the Auto-MCS AMScript manager/editor and enable it for the target server. If your Auto-MCS version requires `.ams`, rename a copy or create a script in the editor and paste the file contents.
-5. Install the Python dependency in the Python environment used by Auto-MCS:
+Ollama runs the model locally. Prompts are sent to the configured Ollama endpoint rather than a hosted inference service. The computer running Ollama must have enough memory and disk space for the selected model.
 
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
+#### 1. Install Ollama
 
-6. Configure one of the AI backends below.
-7. Restart Auto-MCS and start the server.
-
-### Option 2: Clone the repository
-
-```powershell
-git clone https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS.git
-cd minecraft-llm-assistant-for-AutoMCS
-python -m pip install -r requirements.txt
-```
-
-Then import `MineCraft_LLM.txt` through the Auto-MCS AMScript manager/editor, enable it for the target server, and configure a backend.
-
-## Configure the AI backend
-
-### Option A: Ollama local inference
-
-Ollama runs the model locally. This avoids sending prompts to a hosted inference service and does not require a Hugging Face token. The computer running Ollama must have enough memory and disk space for the selected model.
-
-#### 1. Install Ollama on Windows
-
-1. Visit the official download page: [https://ollama.com/download/windows](https://ollama.com/download/windows).
-2. Download and run the Windows installer.
-3. Complete the installation and allow Ollama to run in the background.
+1. Visit the [official Windows download page](https://ollama.com/download/windows).
+2. Download and run the installer.
+3. Complete installation and allow Ollama to run in the background.
 4. Open a new PowerShell window.
 
-Verify the installation:
+Verify:
 
 ```powershell
 ollama --version
@@ -134,15 +153,15 @@ If the command is not recognized, restart PowerShell or Windows so the installer
 
 #### 2. Download a model
 
-The script is configured for a small Qwen model by default in the example below:
+The example configuration uses a small Qwen model:
 
 ```powershell
 ollama pull qwen3.5:0.8b
 ```
 
-You can browse available models at [https://ollama.com/library](https://ollama.com/library). Larger models generally provide better answers but require more RAM, storage, and processing time.
+Browse other options in the [Ollama model library](https://ollama.com/library). Larger models generally provide better answers but require more RAM, storage, and processing time.
 
-Test the model before connecting it to Minecraft:
+Test the model:
 
 ```powershell
 ollama run qwen3.5:0.8b
@@ -152,7 +171,7 @@ Ask a short question, then enter `/bye` to exit. The local API normally listens 
 
 #### 3. Select Ollama in the script
 
-At the top of `MineCraft_LLM.txt`, set:
+Set these values near the top of `MineCraft_LLM.txt`:
 
 ```python
 ACTIVE_BACKEND = "ollama"
@@ -160,96 +179,122 @@ ACTIVE_MODEL_NAME = "qwen3.5:0.8b"
 OLLAMA_BASE_URL = "http://localhost:11434"
 ```
 
-Keep Ollama running before starting the Minecraft server. The script checks the Ollama endpoint at server startup and reports connectivity problems in the Auto-MCS log. Optional performance settings include `OLLAMA_TIMEOUT`, `OLLAMA_NUM_PREDICT`, `OLLAMA_THINK`, and `OLLAMA_KEEP_ALIVE`.
+Keep Ollama running before starting the Minecraft server. The script checks the endpoint at server startup and reports connectivity problems in the Auto-MCS log.
 
-#### 4. Verify Ollama from PowerShell
+Optional performance settings include `OLLAMA_TIMEOUT`, `OLLAMA_NUM_PREDICT`, `OLLAMA_THINK`, and `OLLAMA_KEEP_ALIVE`.
+
+#### 4. Verify the local API
 
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:11434/api/version"
 ```
 
-If this request fails, start Ollama from the Start menu or run `ollama serve` in a separate PowerShell window.
+If the request fails, start the Ollama application or run `ollama serve` in a separate PowerShell window.
 
-### Option B: Hugging Face hosted inference
+</details>
+
+<details>
+<summary><strong>Option B — Hugging Face (hosted inference)</strong></summary>
 
 The default configuration uses the Hugging Face Space `yuntian-deng/ChatGPT`.
 
-1. Create or sign in to a Hugging Face account.
+1. Create or sign in to a [Hugging Face account](https://huggingface.co/).
 2. Create an access token with permission to use the selected Space.
 3. Save it as a user-level Windows environment variable:
 
-   ```powershell
-   [Environment]::SetEnvironmentVariable("HF_TOKEN", "hf_your_token_here", "User")
-   ```
+```powershell
+[Environment]::SetEnvironmentVariable("HF_TOKEN", "hf_your_token_here", "User")
+```
 
 4. Restart Auto-MCS.
-5. Leave the script configuration as:
+5. Keep the script configuration as:
 
-   ```python
-   ACTIVE_BACKEND = "hf"
-   ACTIVE_MODEL_NAME = "yuntian-deng/ChatGPT"
-   ```
+```python
+ACTIVE_BACKEND = "hf"
+ACTIVE_MODEL_NAME = "yuntian-deng/ChatGPT"
+```
 
 Change `ACTIVE_MODEL_NAME` only to a compatible Space exposing the expected `/predict` API.
 
-## Commands
+</details>
+
+## 🎮 Command reference
 
 | Command | Example | Description |
 | --- | --- | --- |
-| `!llm <question>` | `!llm what can I do with my inventory?` | Ask the assistant a survival question |
-| `!find <structure>` | `!find ruined portal` | Locate the nearest supported structure |
-| `!biome <biome>` | `!biome cherry grove` | Locate the nearest supported biome |
-| `!lastdeath` | `!lastdeath` | Display the latest recorded death coordinates |
+| `!llm <question>` | `!llm what can I do with my inventory?` | Ask a survival question. |
+| `!find <structure>` | `!find ruined portal` | Locate the nearest supported structure. |
+| `!biome <biome>` | `!biome cherry grove` | Locate the nearest supported biome. |
+| `!lastdeath` | `!lastdeath` | Display the latest recorded death coordinates. |
 
-The assistant also routes direct location requests such as `!llm find a village` to Minecraft's `/locate` command without using the LLM. Inventory-related prompts are first parsed by Python: simple inventory questions display the parsed list directly, while crafting, usage, and recommendation questions send the inventory summary to the selected AI backend for analysis.
+### How `!llm` handles requests
 
-## Configuration reference
+- **Direct location prompts:** Requests such as `!llm find a village` are routed to Minecraft's `/locate` command without calling the LLM.
+- **Basic inventory prompts:** Python parses and displays the inventory directly.
+- **Inventory analysis:** Questions about crafting, building, or what to do with items send the inventory summary to the selected AI backend for analysis.
+- **General questions:** Other prompts are sent to the selected AI backend with the player's health and hunger context.
 
-The server-owner configuration section is at the top of `MineCraft_LLM.txt`:
+## ⚙️ Configuration reference
 
 | Setting | Purpose |
 | --- | --- |
-| `ACTIVE_BACKEND` | Select `hf` or `ollama` |
-| `ACTIVE_MODEL_NAME` | Hugging Face Space or Ollama model name |
-| `OLLAMA_BASE_URL` | Ollama API endpoint |
-| `OLLAMA_TIMEOUT` | Ollama request timeout in seconds |
-| `OLLAMA_NUM_PREDICT` | Maximum generated token count |
-| `OLLAMA_THINK` | Enable or disable model thinking mode where supported |
-| `OLLAMA_KEEP_ALIVE` | How long Ollama keeps the model loaded |
+| `ACTIVE_BACKEND` | Select `hf` or `ollama`. |
+| `ACTIVE_MODEL_NAME` | Hugging Face Space or Ollama model name. |
+| `OLLAMA_BASE_URL` | Ollama API endpoint. |
+| `OLLAMA_TIMEOUT` | Ollama request timeout in seconds. |
+| `OLLAMA_NUM_PREDICT` | Maximum generated token count. |
+| `OLLAMA_THINK` | Enable or disable model thinking mode where supported. |
+| `OLLAMA_KEEP_ALIVE` | How long Ollama keeps the model loaded. |
 
-Never commit access tokens. Use environment variables and keep local configuration changes outside version control.
+> [!IMPORTANT]
+> Never commit access tokens. Use environment variables and keep local configuration changes outside version control.
 
-## Troubleshooting
+## 🔒 Privacy and network behavior
 
-- **Ollama command not found:** restart PowerShell after installation, then run `ollama --version`.
-- **Ollama connection refused:** start the Ollama application or run `ollama serve`; verify `http://localhost:11434/api/version`.
-- **Model not found:** run `ollama pull <model-name>` and make sure `ACTIVE_MODEL_NAME` exactly matches `ollama list`.
-- **Slow Ollama responses:** use a smaller model, reduce `OLLAMA_NUM_PREDICT`, or increase `OLLAMA_TIMEOUT`.
-- **Hugging Face token missing:** confirm `HF_TOKEN` is set for the same Windows user running Auto-MCS, then restart Auto-MCS.
-- **`gradio_client` import error:** install `requirements.txt` into the Python environment used by Auto-MCS.
-- **No locate result:** use a supported structure or biome and verify the Minecraft server version supports `/locate`.
-- **Inventory not shown:** ensure the script can execute `/data get entity` and that the player's name appears in the server output.
+- **Hugging Face:** The prompt and included player context (health, hunger, and, for inventory analysis, inventory summary) are sent to the configured Hugging Face Space for inference. The access token is read from `HF_TOKEN` in the process environment or the current Windows user's environment registry entry.
+- **Ollama:** Inference requests are sent to the configured Ollama endpoint, which defaults to `http://localhost:11434`.
+- **In-game chat:** AI-generated questions and answers are broadcast to all players using the server's chat output. **Do not treat `!llm` conversations as private** and avoid entering personal or sensitive information.
 
-## How it works
+## 🛠️ Troubleshooting
 
-For inventory requests, the script runs Minecraft's `/data get entity` command, captures the server output, parses the SNBT item list, and aggregates item counts in Python. Basic inventory requests display that result directly; prompts that ask what to craft, build, or do with the inventory send the summary, player health, hunger, and question to the selected AI backend. Structure and biome searches use Minecraft's `/locate` command, then format the returned coordinates with distance and direction. Death coordinates are recorded through the player-death event and stored in the player's Auto-MCS persistent data.
+| Problem | What to check |
+| --- | --- |
+| **Ollama command not found** | Restart PowerShell after installation, then run `ollama --version`. |
+| **Ollama connection refused** | Start Ollama or run `ollama serve`; verify `http://localhost:11434/api/version`. |
+| **Model not found** | Run `ollama pull <model-name>` and ensure `ACTIVE_MODEL_NAME` matches `ollama list`. |
+| **Slow Ollama responses** | Try a smaller model, reduce `OLLAMA_NUM_PREDICT`, or increase `OLLAMA_TIMEOUT`. |
+| **Hugging Face token missing** | Confirm `HF_TOKEN` is set for the same Windows user running Auto-MCS, then restart Auto-MCS. |
+| **`gradio_client` import error** | Install `requirements.txt` into the Python environment used by Auto-MCS. |
+| **No locate result** | Use a supported structure or biome and verify the Minecraft server version supports `/locate`. |
+| **Inventory not shown** | Ensure the script can execute `/data get entity` and that the player's name appears in the server output. |
 
-## Privacy and network behavior
+## 🔍 How it works
 
-- With the **Hugging Face** backend, the prompt and included player context (health, hunger, and, for inventory analysis, inventory summary) are sent to the configured Hugging Face Space for inference. The access token is read from `HF_TOKEN` in the process environment or the current Windows user's environment registry entry.
-- With **Ollama**, inference requests are sent to the configured Ollama endpoint, which defaults to `http://localhost:11434`.
-- **Important:** AI-generated questions and answers are broadcast to all players using the server's chat output. Do not treat `!llm` conversations as private; avoid entering personal or sensitive information.
+For inventory requests, the script runs Minecraft's `/data get entity` command, captures the server output, parses the SNBT item list, and aggregates item counts in Python. Basic inventory requests display that result directly; prompts that ask what to craft, build, or do with the inventory send the summary, player health, hunger, and question to the selected AI backend.
 
-## Download
+Structure and biome searches use Minecraft's `/locate` command, then format the returned coordinates with distance and direction. Death coordinates are recorded through the player-death event and stored in the player's Auto-MCS persistent data.
 
-Download the latest ready-to-install package from the [GitHub Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases).
+## 📦 Downloads and script backups
 
-## Credits
+- **Latest release:** [Download from GitHub Releases](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases).
+- **Script backups:** Use the folder button in the AMScript manager to open the managed scripts directory. Keep an external backup because AMScripts may not be included in Auto-MCS's normal server backup set.
+
+## 🙌 Credits
 
 This project is inspired by the Auto-MCS ChatGPT script by [macarooni-man](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-library/ChatGPT/chatgpt.ams).
 
-## License
+## 📄 License
 
 This project is available under a [proprietary non-commercial use licence](LICENSE). Individual personal and educational use is permitted; company, organisational, and commercial use requires prior written permission.
 
 Copyright (c) 2026 Sifat Jaman.
+
+---
+
+<div align="center">
+
+**Built for Minecraft survival. Powered by Python + your choice of AI backend.**
+
+[Back to top](#minecraft-llm-assistant-for-automcs)
+
+</div>
