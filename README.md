@@ -76,7 +76,7 @@ Join the server and test these commands:
 !llm what do I have in my inventory?
 ```
 
-The first three commands verify script event and command registration. The final command verifies inventory capture and the configured AI backend. A successful startup should also show a Hugging Face configuration message or an Ollama connectivity message in the Auto-MCS console.
+The first three commands verify script event and command registration. The final command requests AI-powered inventory analysis. To display the inventory without AI, use `!llm what do I have?`. A successful startup should also show a Hugging Face configuration message or an Ollama connectivity message in the Auto-MCS console.
 
 ### Script management and backups
 
@@ -91,7 +91,7 @@ For the official AMScript workflow and current interface details, see the [Auto-
 1. Open the repository's [Releases page](https://github.com/sifat-jaman-13/minecraft-llm-assistant-for-AutoMCS/releases).
 2. Download the latest `minecraft-llm-assistant-for-AutoMCS-v*.zip` asset.
 3. Extract the ZIP file.
-4. Copy `MineCraft_LLM.txt` into the Auto-MCS script/AMScript library location used by your server.
+4. Import `MineCraft_LLM.txt` through the Auto-MCS AMScript manager/editor and enable it for the target server. If your Auto-MCS version requires `.ams`, rename a copy or create a script in the editor and paste the file contents.
 5. Install the Python dependency in the Python environment used by Auto-MCS:
 
    ```powershell
@@ -109,7 +109,7 @@ cd minecraft-llm-assistant-for-AutoMCS
 python -m pip install -r requirements.txt
 ```
 
-Then copy `MineCraft_LLM.txt` into the Auto-MCS script/AMScript library location and configure a backend.
+Then import `MineCraft_LLM.txt` through the Auto-MCS AMScript manager/editor, enable it for the target server, and configure a backend.
 
 ## Configure the AI backend
 
@@ -201,7 +201,7 @@ Change `ACTIVE_MODEL_NAME` only to a compatible Space exposing the expected `/pr
 | `!biome <biome>` | `!biome cherry grove` | Locate the nearest supported biome |
 | `!lastdeath` | `!lastdeath` | Display the latest recorded death coordinates |
 
-The assistant also routes direct location requests such as `!llm find a village` to Minecraft's `/locate` command without using the LLM.
+The assistant also routes direct location requests such as `!llm find a village` to Minecraft's `/locate` command without using the LLM. Inventory-related prompts are first parsed by Python: simple inventory questions display the parsed list directly, while crafting, usage, and recommendation questions send the inventory summary to the selected AI backend for analysis.
 
 ## Configuration reference
 
@@ -232,7 +232,13 @@ Never commit access tokens. Use environment variables and keep local configurati
 
 ## How it works
 
-For inventory questions, the script requests the player's inventory through Minecraft's `/data get entity` command, captures the server output, parses the SNBT item list, and aggregates matching items. It either displays the result directly or sends the summary to the selected AI backend. Structure and biome searches use `/locate`, then format the returned coordinates with distance and direction.
+For inventory requests, the script runs Minecraft's `/data get entity` command, captures the server output, parses the SNBT item list, and aggregates item counts in Python. Basic inventory requests display that result directly; prompts that ask what to craft, build, or do with the inventory send the summary, player health, hunger, and question to the selected AI backend. Structure and biome searches use Minecraft's `/locate` command, then format the returned coordinates with distance and direction. Death coordinates are recorded through the player-death event and stored in the player's Auto-MCS persistent data.
+
+## Privacy and network behavior
+
+- With the **Hugging Face** backend, the prompt and included player context (health, hunger, and, for inventory analysis, inventory summary) are sent to the configured Hugging Face Space for inference. The access token is read from `HF_TOKEN` in the process environment or the current Windows user's environment registry entry.
+- With **Ollama**, inference requests are sent to the configured Ollama endpoint, which defaults to `http://localhost:11434`.
+- **Important:** AI-generated questions and answers are broadcast to all players using the server's chat output. Do not treat `!llm` conversations as private; avoid entering personal or sensitive information.
 
 ## Download
 
